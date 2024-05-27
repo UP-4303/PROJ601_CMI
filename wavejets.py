@@ -123,6 +123,27 @@ class WavejetComputation(WavefrontOBJ):
 
         return phis
     
+    def gaussian_curvature(self, phis: np.ndarray)-> np.complex64:
+        return self.__class__.cls_gaussian_curvature(phis)
+    
+    @classmethod
+    def cls_gaussian_curvature(cls, phis: np.ndarray)-> np.complex64:
+        # Formula depicted in `paper.pdf` uses 2-Wavejet (or Wavejet of order 2)
+        if(len(phis) < cls.cls_k_n_to_index(2,2)+1 ):
+            raise Exception("Order of provided Wavejet too low. Please provide at least 2-Wavejet")
+        a = (4 * phis[cls.cls_k_n_to_index(2,0)]**2 - 16 * phis[cls.cls_k_n_to_index(2,-2)] * phis[cls.cls_k_n_to_index(2,2)]) / (1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)])**2
+        return a
+    
+    def mean_curvature(self, phis: np.ndarray)-> np.complex64:
+        return self.__class__.cls_mean_curvature(phis)
+    
+    @classmethod
+    def cls_mean_curvature(cls, phis: np.ndarray)-> np.complex64:
+        # Formula depicted in `paper.pdf` uses 2-Wavejet (or Wavejet of order 2)
+        if(len(phis) < cls.cls_k_n_to_index(2,2)+1 ):
+            raise Exception("Order of provided Wavejet too low. Please provide at least 2-Wavejet")
+        return (2 * phis[cls.cls_k_n_to_index(2,0)] * ( 1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)]) + 4 * phis[cls.cls_k_n_to_index(2,-2)] * phis[cls.cls_k_n_to_index(1,1)]**2 + 4 * phis[cls.cls_k_n_to_index(2,2)] * phis[cls.cls_k_n_to_index(1,-1)]**2) / (1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)])**(3/2)
+    
     @classmethod
     def cls_load_obj(cls, filename: str, nodes_get_by_bfs: Callable[[int], int], default_mtl='default_mtl', triangulate=False):
         obj = cls(nodes_get_by_bfs, default_mtl)
@@ -153,15 +174,22 @@ def main():
 
     coo = wc.only_coordinates()
     phis = np.ndarray((len(coo), wc.compute_number_of_phi(k_order)), np.complex64)
-    real_phi = np.ndarray((len(coo)), np.int64)
+    
+    real_phi_2_0 = np.ndarray(len(coo), np.float64)
+    gaussian = np.ndarray(len(coo), np.float64)
+    mean = np.ndarray(len(coo), np.float64)
 
     # Compute phis
     for i in range(len(coo)):
         print("Computing phis : ", i/len(coo)*100, "%")
         phis[i] = wc.compute_phis(k_order, i)
-        real_phi[i] = phis[i, wc.k_n_to_index(color_k, color_n)].real
+        real_phi_2_0[i] = phis[i, wc.k_n_to_index(color_k, color_n)].real
+        gaussian[i] = wc.gaussian_curvature(phis[i]).real
+        mean[i] = wc.mean_curvature(phis[i]).real
 
-    original_mesh.add_scalar_quantity('real_phi', real_phi)
+    original_mesh.add_scalar_quantity('real_phi_2_0', real_phi_2_0)
+    original_mesh.add_scalar_quantity('gaussian', gaussian)
+    original_mesh.add_scalar_quantity('mean', mean)
 
     # Show result
     ps.show()
