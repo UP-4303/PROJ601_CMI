@@ -5,7 +5,7 @@
 # https://jamesgregson.ca/loadsave-wavefront-obj-files-in-python.html
 
 import numpy as np
-from typing import Union, List, Tuple
+from typing import Union, List
 
 class WavefrontOBJ:
     path: Union[None, str]
@@ -20,30 +20,54 @@ class WavefrontOBJ:
         self.texcoords = []                 # texture coordinates
         self.polygons  = []                 # M*Nv*3 array, Nv=# of vertices, stored as\ vid,tid,nid (-1 for N/A)
 
-    def only_coordinates( self ):
-        V=np.zeros( ( len( self.vertices ), 3 ), np.float64 )
+    def only_coordinates( self )-> np.ndarray:
+        V = np.ndarray((len(self.vertices), 3))
         for i in range(len(self.vertices)):
             V[i][0]= self.vertices[i][0]
             V[i][1]= self.vertices[i][1]
             V[i][2]= self.vertices[i][2]
         return V
     
-    def set_coordinates( self, new_coordinates: List[Tuple[float, float, float]] )-> None:
-        for i in range(len(new_coordinates)):
-            for j in range(3):
-                self.vertices[i][j] = new_coordinates[i][j]
+    def only_faces( self )-> np.ndarray:
+        all_faces = []
+        for i in range(len(self.polygons)):
+            face = np.ndarray(len(self.polygons[i]))
+            for j in range(len(self.polygons[i])):
+                face[j] = self.polygons[i][j][0]
+            all_faces.append(face)
+        return np.array(all_faces, dtype= np.int64)
+    
+    # Apply on one face
+    def face_indices_to_values(self, face: np.ndarray)-> np.ndarray:
+        coo = self.only_coordinates()
+        func_indice_to_value = lambda point: coo[point]
+        return np.apply_along_axis(func_indice_to_value, 0, face)
+    
+    # Apply on a list of faces
+    def faces_points_indices_to_values(self, faces: np.ndarray)-> np.ndarray:
+        return np.apply_along_axis(self.face_indices_to_values, 0, faces)
+    
+    def neighbor_faces( self, p_idx: int)-> np.ndarray:
+        faces: List = []
+        for face in self.only_faces():
+            for indice in face:
+                if p_idx == indice:
+                    faces.append(self.face_indices_to_values(face))
+                    break
+        return np.array(faces)
 
-    def only_faces( self ):
-        all_faces=[]
-        for f in self.polygons:
-            face=[]
-            for indices in f:
-                face.append( indices[0] )
-            all_faces.append( face )
-        return all_faces
+    def set_coordinates( self, new_coordinates: np.ndarray )-> None:
+        for i in range(len(new_coordinates)):
+            for j in range(len(new_coordinates[i])): # Not tested with more than 3D, don't even know if an obj in more than 3D can be loaded
+                self.vertices[i][j] = new_coordinates[i][j]
     
     @classmethod
-    def load_obj( cls, filename: str, default_mtl='default_mtl', triangulate=False ):
+    def cls_load_obj( cls, filename: str, default_mtl='default_mtl', triangulate=False ):
+        obj = cls(default_mtl)
+        obj.load_obj(filename, default_mtl, triangulate)
+        return obj
+    
+    def load_obj( self, filename: str, default_mtl='default_mtl', triangulate=False ):
         """
         Reads a .obj file from disk and returns a WavefrontOBJ instance
 
@@ -64,35 +88,33 @@ class WavefrontOBJ:
             return (vid,tid,nid)
 
         with open( filename, 'r' ) as objf:
-            obj = cls(default_mtl=default_mtl)
-            obj.path = filename
-            cur_mat = obj.mtls.index(default_mtl)
+            self.path = filename
+            cur_mat = self.mtls.index(default_mtl)
             for line in objf:
                 toks = line.split()
                 if not toks:
                     continue
                 if toks[0] == 'v':
-                    obj.vertices.append( [ float(v) for v in toks[1:]] )
+                    self.vertices.append( [ float(v) for v in toks[1:]] )
                 elif toks[0] == 'vn':
-                    obj.normals.append( [ float(v) for v in toks[1:]] )
+                    self.normals.append( [ float(v) for v in toks[1:]] )
                 elif toks[0] == 'vt':
-                    obj.texcoords.append( [ float(v) for v in toks[1:]] )
+                    self.texcoords.append( [ float(v) for v in toks[1:]] )
                 elif toks[0] == 'f':
                     poly = [ parse_vertex(vstr) for vstr in toks[1:] ]
                     if triangulate:
                         for i in range(2,len(poly)):
-                            obj.mtlid.append( cur_mat )
-                            obj.polygons.append( (poly[0], poly[i-1], poly[i] ) )
+                            self.mtlid.append( cur_mat )
+                            self.polygons.append( (poly[0], poly[i-1], poly[i] ) )
                     else:
-                        obj.mtlid.append(cur_mat)
-                        obj.polygons.append( poly )
+                        self.mtlid.append(cur_mat)
+                        self.polygons.append( poly )
                 elif toks[0] == 'mtllib':
-                    obj.mtllibs.append( toks[1] )
+                    self.mtllibs.append( toks[1] )
                 elif toks[0] == 'usemtl':
-                    if toks[1] not in obj.mtls:
-                        obj.mtls.append(toks[1])
-                    cur_mat = obj.mtls.index( toks[1] )
-            return obj
+                    if toks[1] not in self.mtls:
+                        self.mtls.append(toks[1])
+                    cur_mat = self.mtls.index( toks[1] )
     
     def save_obj( self, filename: str ):
         """
