@@ -1,6 +1,12 @@
 # VSCode settings
 .vscode/
 
+# Polyscope screenshots
+screenshots
+
+# Just ignore
+*.ign.*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
