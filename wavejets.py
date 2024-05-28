@@ -51,7 +51,7 @@ class WavejetComputation(WavefrontOBJ):
         return k,n
 
     def compute_heightmap(self, k_order: int, p_idx: int)-> Tuple[np.ndarray, np.ndarray, float]:
-        # We are looking for a tangent plane with a little offset, so that the heightmap won't be 0 at p
+        # We are looking for a tangent plane
         faces = self.neighbor_faces(p_idx)
         coo = self.only_coordinates()
 
@@ -62,13 +62,17 @@ class WavejetComputation(WavefrontOBJ):
         norm = np.linalg.norm(orth)
         if norm == 0: # Yes, it does happen
             return np.array([]), np.array([0., 0., 0.]), 0.
-        orth = orth / np.linalg.norm(orth)
+        orth /= np.linalg.norm(orth)
 
         vect1 = np.random.rand(3)
         vect1 -= vect1.dot(orth) * orth
         vect2 = np.cross(vect1, orth)
 
         new_base = np.column_stack([vect1, vect2, orth])
+
+        p = np.linalg.inv(new_base).dot(coo[p_idx])
+        offset = p[2]
+        p[2] = 0.
 
         # We gather and compute the neighbors in the new base
         seen: List[int] = []
@@ -79,6 +83,10 @@ class WavejetComputation(WavefrontOBJ):
 
         min_k = self.compute_number_of_phi(k_order)
 
+        def use_offset(vect):
+            vect[2]-=offset
+            return vect
+
         while True: # do loop
             seen, to_treat = self.graph.bfs(
                 (self.nodes_get_by_bfs(min_k)-len(uniques)),
@@ -88,7 +96,7 @@ class WavejetComputation(WavefrontOBJ):
             
             points = np.array([
                 points[i] if i < points.size
-                else np.linalg.inv(new_base).dot(coo[seen[i]])
+                else use_offset(np.linalg.inv(new_base).dot(coo[seen[i]]))
                 for i in range(len(seen))
             ])
 
@@ -99,7 +107,6 @@ class WavejetComputation(WavefrontOBJ):
             if (len(uniques) >= self.nodes_get_by_bfs(min_k)):
                 break
 
-        p = coo[p_idx]
         compute_dist = lambda point: euclidean(point, p)
         dists = np.apply_along_axis(compute_dist, 1, uniques)
 
@@ -157,16 +164,36 @@ class WavejetComputation(WavefrontOBJ):
             raise Exception("Order of provided Wavejet too low. Please provide at least 2-Wavejet")
         return (2 * phis[cls.cls_k_n_to_index(2,0)] * ( 1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)]) + 4 * phis[cls.cls_k_n_to_index(2,-2)] * phis[cls.cls_k_n_to_index(1,1)]**2 + 4 * phis[cls.cls_k_n_to_index(2,2)] * phis[cls.cls_k_n_to_index(1,-1)]**2) / (1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)])**(3/2)
     
-    def coef_ans(self, phis: np.ndarray, n: int, s: float)-> float:
-        # Called a_n(s) in `paper.pdf`
+    def coef_a0s(self, phis: np.ndarray, s: float)-> float:
         k_max,_= self.index_to_k_n(len(phis)-1)
         result = 0.
-        for k in range(np.abs(n), k_max+1):
-            result += (phis[self.k_n_to_index(k,n)] * s**(k+2)) / ( k + 2 )
+        for k in range(2, k_max+1):
+            result += (phis[self.k_n_to_index(k,0)] * s**(k+2)) / ( k + 2 )
         return result
     
     def enhance_position(self, p_idx: int, normal: np.ndarray, user_coef: float, phis: np.ndarray, radius_s: float)-> np.ndarray:
-        return self.only_coordinates()[p_idx] - (phis[self.k_n_to_index(0,0)] + 2 * np.pi * (user_coef -1) * self.coef_ans(phis, 0, radius_s)) * normal
+        return self.only_coordinates()[p_idx] - (phis[self.k_n_to_index(0,0)] + 2 * np.pi * (user_coef -1) * self.coef_a0s(phis, radius_s)) * normal
+    
+    def coef_a1s(self, phis: np.ndarray, s: float)-> float:
+        k_max,_= self.index_to_k_n(len(phis)-1)
+        result = 0.
+        for k in range(3, k_max+1):
+            result += (phis[self.k_n_to_index(k,1)] * s**(k+2)) / ( k + 2 )
+        return result
+
+    def tangent_phis(self, phis: np.ndarray)-> np.ndarray:
+        for idx in range(len(phis)):
+            k,n = self.index_to_k_n(idx)
+            new_phi = complex()
+            for j in range(1, k-1):
+                for p in range(-(k-j), k-j+1):
+                    m = n-p
+                    if np.abs(m) > j:
+                        continue
+                    new_phi += (phis[self.k_n_to_index(k-j, p)] / 2j) * (phis[self.k_n_to_index(j+1, m+1)] * ( m + j + 2 ) + phis[self.k_n_to_index(j+1, m-1)] * ( m - j - 2 ))
+            phis[idx] -= new_phi
+
+        return np.array(phis)
     
     @classmethod
     def cls_load_obj(cls, filename: str, nodes_get_by_bfs: Callable[[int], int], default_mtl='default_mtl', triangulate=False):

@@ -33,6 +33,7 @@ def main():
     for i in range(len(coo)):
         print("Computing phis : ", i/len(coo)*100, "%")
         phis[i], normal, radius = wc.compute_phis(k_order, i)
+        # phis[i] = wc.tangent_phis(phis[i])
         real_phi_2_0[i] = phis[i, wc.k_n_to_index(color_k, color_n)].real
         gaussian[i] = wc.gaussian_curvature(phis[i]).real
         mean[i] = wc.mean_curvature(phis[i]).real
@@ -44,7 +45,7 @@ def main():
 
     wc.set_coordinates(new_coo_pos_enhance)
 
-    new_mesh: ps.SurfaceMesh = ps.register_surface_mesh("new mesh", wc.only_coordinates(), wc.only_faces())
+    # new_mesh: ps.SurfaceMesh = ps.register_surface_mesh("new mesh", wc.only_coordinates(), wc.only_faces())
 
     # Show result
     ps.show()
