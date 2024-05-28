@@ -2,7 +2,7 @@ import numpy as np
 import polyscope as ps
 from collections import deque
 from scipy.spatial.distance import euclidean
-from typing import List, Callable
+from typing import List, Callable, Tuple
 from wavefront import WavefrontOBJ
 from utils import point_cart_to_pol
 from graph import Graph
@@ -40,8 +40,17 @@ class WavejetComputation(WavefrontOBJ):
     @classmethod
     def cls_k_n_to_index(cls, k: int, n: int)-> int:
         return cls.cls_number_of_phi(k) -1 -(k-n)
+    
+    def index_to_k_n(self, index: int)-> Tuple[int, int]:
+        return self.__class__.cls_index_to_k_n(index)
+    
+    @classmethod
+    def cls_index_to_k_n(cls, index: int)-> Tuple[int, int]:
+        k = int(np.floor(np.sqrt(index)))
+        n = int(index - cls.cls_k_n_to_index(k, -k) -k)
+        return k,n
 
-    def compute_heightmap(self, k_order: int, p_idx: int)-> np.ndarray:
+    def compute_heightmap(self, k_order: int, p_idx: int)-> Tuple[np.ndarray, np.ndarray, float]:
         # We are looking for a tangent plane with a little offset, so that the heightmap won't be 0 at p
         faces = self.neighbor_faces(p_idx)
         coo = self.only_coordinates()
@@ -50,6 +59,9 @@ class WavejetComputation(WavefrontOBJ):
         for face in faces:
             orth += np.cross(face[0]-face[1], face[1]-face[2])
         
+        norm = np.linalg.norm(orth)
+        if norm == 0: # Yes, it does happen
+            return np.array([]), np.array([0., 0., 0.]), 0.
         orth = orth / np.linalg.norm(orth)
 
         vect1 = np.random.rand(3)
@@ -95,16 +107,17 @@ class WavejetComputation(WavefrontOBJ):
         get_point = lambda dist_tuple: dist_tuple[1]
         dist_and_point_list = [(dists[i], uniques[i]) for i in range(len(uniques))]
 
-        return np.array([
-            get_point(dist_and_point) for dist_and_point in
-                sorted(dist_and_point_list, key=get_dist)[:min_k]
-        ])
+        points_kept = sorted(dist_and_point_list, key=get_dist)[:min_k]
+
+        return (np.array([get_point(dist_and_point) for dist_and_point in points_kept]),
+            orth,
+            get_dist(points_kept[-1]))
     
     def compute_b(self, k: int, n: int, r: float, theta: float)-> complex:
         return (r**k) * (np.e ** (1j * n * theta))
     
-    def compute_phis(self, k_order: int, p_idx: int)-> np.ndarray:
-        heightmap = self.compute_heightmap(k_order, p_idx)
+    def compute_phis(self, k_order: int, p_idx: int)-> Tuple[np.ndarray, np.ndarray, float]:
+        heightmap, normal, radius = self.compute_heightmap(k_order, p_idx)
 
         numb_phi = self.compute_number_of_phi(k_order)
 
@@ -121,7 +134,7 @@ class WavejetComputation(WavefrontOBJ):
 
         phis = np.linalg.lstsq(b_list, neighbors_height, rcond=None)[0]
 
-        return phis
+        return phis, normal, radius
     
     def gaussian_curvature(self, phis: np.ndarray)-> np.complex64:
         return self.__class__.cls_gaussian_curvature(phis)
@@ -143,6 +156,17 @@ class WavejetComputation(WavefrontOBJ):
         if(len(phis) < cls.cls_k_n_to_index(2,2)+1 ):
             raise Exception("Order of provided Wavejet too low. Please provide at least 2-Wavejet")
         return (2 * phis[cls.cls_k_n_to_index(2,0)] * ( 1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)]) + 4 * phis[cls.cls_k_n_to_index(2,-2)] * phis[cls.cls_k_n_to_index(1,1)]**2 + 4 * phis[cls.cls_k_n_to_index(2,2)] * phis[cls.cls_k_n_to_index(1,-1)]**2) / (1 + 4 * phis[cls.cls_k_n_to_index(1,-1)] * phis[cls.cls_k_n_to_index(1,1)])**(3/2)
+    
+    def coef_ans(self, phis: np.ndarray, n: int, s: float)-> float:
+        # Called a_n(s) in `paper.pdf`
+        k_max,_= self.index_to_k_n(len(phis)-1)
+        result = 0.
+        for k in range(np.abs(n), k_max+1):
+            result += (phis[self.k_n_to_index(k,n)] * s**(k+2)) / ( k + 2 )
+        return result
+    
+    def enhance_position(self, p_idx: int, normal: np.ndarray, user_coef: float, phis: np.ndarray, radius_s: float)-> np.ndarray:
+        return self.only_coordinates()[p_idx] - (phis[self.k_n_to_index(0,0)] + 2 * np.pi * (user_coef -1) * self.coef_ans(phis, 0, radius_s)) * normal
     
     @classmethod
     def cls_load_obj(cls, filename: str, nodes_get_by_bfs: Callable[[int], int], default_mtl='default_mtl', triangulate=False):

@@ -28,33 +28,32 @@ class WavefrontOBJ:
             V[i][2]= self.vertices[i][2]
         return V
     
-    def only_faces( self )-> np.ndarray:
+    def only_faces( self )-> List[List[int]]:
         all_faces = []
         for i in range(len(self.polygons)):
-            face = np.ndarray(len(self.polygons[i]))
+            face = []
             for j in range(len(self.polygons[i])):
-                face[j] = self.polygons[i][j][0]
+                face.append(self.polygons[i][j][0])
             all_faces.append(face)
-        return np.array(all_faces, dtype= np.int64)
+        return all_faces
     
     # Apply on one face
-    def face_indices_to_values(self, face: np.ndarray)-> np.ndarray:
+    def face_indices_to_values(self, face: List[int])-> List[np.ndarray]:
         coo = self.only_coordinates()
-        func_indice_to_value = lambda point: coo[point]
-        return np.apply_along_axis(func_indice_to_value, 0, face)
+        return [coo[point] for point in face]
     
     # Apply on a list of faces
     def faces_points_indices_to_values(self, faces: np.ndarray)-> np.ndarray:
         return np.apply_along_axis(self.face_indices_to_values, 0, faces)
     
-    def neighbor_faces( self, p_idx: int)-> np.ndarray:
+    def neighbor_faces( self, p_idx: int)-> List[List[np.ndarray]]:
         faces: List = []
         for face in self.only_faces():
             for indice in face:
                 if p_idx == indice:
                     faces.append(self.face_indices_to_values(face))
                     break
-        return np.array(faces)
+        return faces
 
     def set_coordinates( self, new_coordinates: np.ndarray )-> None:
         for i in range(len(new_coordinates)):
