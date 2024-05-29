@@ -9,11 +9,13 @@ from graph import Graph
 
 class WavejetComputation(WavefrontOBJ):
     nodes_get_by_bfs: Callable[[int], int]
+    nodes_keep_for_system: Callable[[int], int]
     graph: Graph
 
-    def __init__(self, nodes_get_by_bfs: Callable[[int], int], default_mtl='default_mtl'):
+    def __init__(self, nodes_get_by_bfs: Callable[[int], int], nodes_keep_for_system: Callable[[int], int], default_mtl='default_mtl'):
         super().__init__(default_mtl)
         self.nodes_get_by_bfs = nodes_get_by_bfs
+        self.nodes_keep_for_system = nodes_keep_for_system
         self.graph = Graph(self)
 
     def compute_number_of_phi(self, k_order: int)-> int:
@@ -114,11 +116,12 @@ class WavejetComputation(WavefrontOBJ):
         get_point = lambda dist_tuple: dist_tuple[1]
         dist_and_point_list = [(dists[i], uniques[i]) for i in range(len(uniques))]
 
-        points_kept = sorted(dist_and_point_list, key=get_dist)[:min_k]
+        points_kept = sorted(dist_and_point_list, key=get_dist)[:self.nodes_keep_for_system(min_k)]
 
         return (np.array([get_point(dist_and_point) for dist_and_point in points_kept]),
             orth,
-            get_dist(points_kept[-1]))
+            get_dist(points_kept[-1])
+        )
     
     def compute_b(self, k: int, n: int, r: float, theta: float)-> complex:
         return (r**k) * (np.e ** (1j * n * theta))
@@ -196,8 +199,8 @@ class WavejetComputation(WavefrontOBJ):
         return np.array(phis)
     
     @classmethod
-    def cls_load_obj(cls, filename: str, nodes_get_by_bfs: Callable[[int], int], default_mtl='default_mtl', triangulate=False):
-        obj = cls(nodes_get_by_bfs, default_mtl)
+    def cls_load_obj(cls, filename: str, nodes_get_by_bfs: Callable[[int], int], nodes_keep_for_system: Callable[[int], int], default_mtl='default_mtl', triangulate=False):
+        obj = cls(nodes_get_by_bfs, nodes_keep_for_system, default_mtl)
         obj.load_obj(filename, default_mtl, triangulate)
         return obj
     

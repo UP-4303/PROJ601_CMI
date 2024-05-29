@@ -6,7 +6,7 @@ from wavejets import WavejetComputation
 def main():
 
     # parameters
-    k_order = 2
+    k_order = 4
     color_using_phi = (2,0)
     ampli_coef = 1
     file_path = 'examples_mesh/octopus.obj'
@@ -18,7 +18,7 @@ def main():
     ps.init()
 
     # Load a 3D model
-    wc = WavejetComputation.cls_load_obj(file_path, (lambda x: x*2))
+    wc = WavejetComputation.cls_load_obj(file_path, (lambda x: x*3), (lambda x: x*2))
     original_mesh: ps.SurfaceMesh = ps.register_surface_mesh("original mesh", wc.only_coordinates(), wc.only_faces())
 
     coo = wc.only_coordinates()
@@ -32,12 +32,13 @@ def main():
     # Compute
     for i in range(len(coo)):
         print("Computing phis : ", i/len(coo)*100, "%")
+
         phis[i], normal, radius = wc.compute_phis(k_order, i)
-        # phis[i] = wc.tangent_phis(phis[i])
         real_phi_2_0[i] = phis[i, wc.k_n_to_index(color_k, color_n)].real
         gaussian[i] = wc.gaussian_curvature(phis[i]).real
         mean[i] = wc.mean_curvature(phis[i]).real
         new_coo_pos_enhance[i] = wc.enhance_position(i, normal, ampli_coef, phis[i], radius)
+        phis[i] = wc.tangent_phis(phis[i])
 
     original_mesh.add_scalar_quantity('real_phi_2_0', real_phi_2_0)
     original_mesh.add_scalar_quantity('gaussian', gaussian)
@@ -51,7 +52,7 @@ def main():
     ps.show()
 
 def test():
-    wc = WavejetComputation.cls_load_obj('examples_mesh/octopus.obj', (lambda x: x*2))
+    wc = WavejetComputation.cls_load_obj('examples_mesh/octopus.obj', (lambda x: x*2), (lambda x: x*3))
     print(len(wc.only_coordinates()))
 
 if __name__ == "__main__":
