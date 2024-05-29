@@ -1,9 +1,6 @@
 # VSCode settings
 .vscode/
 
-# Polyscope screenshots
-screenshots
-
 # Just ignore
 *.ign.*
 
